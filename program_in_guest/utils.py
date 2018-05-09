@@ -4,12 +4,14 @@ import logging
 LOG = logging.getLogger(__name__)
 import os
 
+BASE_FILE_NAME='base.txt'
+
 if os.name == "nt":
-    infile_directory = r'C:\tmp\1'
+    infile_directory=r'C:\tmp\1'
     output_directory = r'C:\tmp\output'
     save_directory = r'C:\tmp\save'
 if os.name == "posix":
-    infile_directory = r'/home/stoveg/tmp/1'
+    infile_directory = '/home/stoveg/tmp/1'
     output_directory = r'/home/stoveg/tmp/output'
     save_directory = r'/home/stoveg/tmp/save'
 

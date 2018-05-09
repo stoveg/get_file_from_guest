@@ -6,22 +6,18 @@ import sys
 import os
 import logging
 import threading
+import abc
 
 sys.path.append(os.path.split(os.path.split(os.path.split(__file__)[0])[0])[0])
-from program_in_guest.utils import output_file, write_end_flag
-from program_in_guest.utils import infile_directory,output_directory,save_directory
+from program_in_guest.utils import output_file, write_end_flag, end_file, BASE_FILE_NAME
+from program_in_guest.utils import output_directory,save_directory
 
 LOG = logging.getLogger(__name__)
 
+infile_dir='/usr/local/nginx/logs'
 infile_list = ['access.log']
-# infile_directory = r'E:\tmp\1'
-# output_directory = r'E:\tmp\output'
-# save_directory = r'E:\tmp\save'
-
-# infile_directory = r'/home/stoveg/tmp/1'
-# output_directory = r'/home/stoveg/tmp/output'
-# save_directory = r'/home/stoveg/tmp/save'
-
+base_file_path=os.path.join(os.path.dirname(__file__),BASE_FILE_NAME+'.base_nginx')
+end_flag_list=[]
 
 class LogInfo(object):
     def __init__(self, regex, log_entry, outfile):
@@ -33,10 +29,9 @@ class LogInfo(object):
 
 
 class Parser(object):
-    def __init__(self, format_string):
-        # TODO parse format string
-        self.format_list = self.get_format_list(format_string)
-        self.regex = " ".join(self.get_regex_list(self.format_list))
+    def __init__(self, regex, format_list):
+        self.regex = regex
+        self.format_list = format_list
 
     def get_format_list(self, format_string):
         format_list = []
@@ -48,6 +43,28 @@ class Parser(object):
             else:
                 format_list.append(x)
         return format_list
+
+    def get_regex_list(self, format_list):
+        regex_list = []
+        for word in format_list:
+            regex_list.append(self.get_regex_dict(format_list)[word])
+        return regex_list
+
+    def parse(self, log_entry, outfile):
+        # TODO parse log entry
+        return LogInfo(self.regex, log_entry, outfile)
+
+    @abc.abstractmethod
+    def get_regex_dict(self, format_list):
+        pass
+
+
+class NginxParser(Parser):
+    def __init__(self, format_string):
+        # TODO parse format string
+        format_list = self.get_format_list(format_string)
+        regex = " ".join(self.get_regex_list(format_list))
+        super(NginxParser, self).__init__(regex, format_list)
 
     def get_regex_dict(self, format_list):
         regex_dict = {}
@@ -88,50 +105,55 @@ class Parser(object):
                 regex_dict[key] = r'(?P<upstream_response_time>[\d\.]{,10})'
         return regex_dict
 
-    def get_regex_list(self, format_list):
-        regex_list = []
-        for word in format_list:
-            regex_list.append(self.get_regex_dict(format_list)[word])
-        return regex_list
-
-    def parse(self, log_entry, outfile):
-        # TODO parse log entry
-        return LogInfo(self.regex, log_entry, outfile)
-
 
 def parse_nginx_log(file_name, format_string, mark):
-    output_path = output_directory + os.sep + file_name
-    input_path = infile_directory + os.sep + file_name
-    save_path = save_directory + os.sep + file_name + '.json'
+    output_path = os.path.join(output_directory, file_name)
+    input_path = os.path.join(infile_dir, file_name)
+    save_path = os.path.join(save_directory, file_name + '.json')
 
-    log_parser = Parser(format_string)
+    log_parser = NginxParser(format_string)
     try:
         with open(save_path, 'w')as save_file:
             with open(input_path, 'rb')as in_file:
                 for log_entry in in_file:
                     log_parser.parse(log_entry, save_file)
         with open(output_file(output_path), 'w')as f:
-            f.write(json.dumps({'output_file': file_name + '.json', 'save_directory': save_directory, 'error': None,
+            f.write(json.dumps({'json_file': file_name + '.json', 'save_directory': save_directory, 'error': None,
                                 'mark': mark}))
         write_end_flag(output_path)
+        end_flag_list.append(end_file(output_path))
     except Exception, ex:
         LOG.warn('{}'.format(str(ex)))
         with open(output_file(output_path), 'w')as f:
-            f.write(json.dumps({'output_file': file_name + '.json', 'save_directory': save_directory, 'error': str(ex),
+            f.write(json.dumps({'json_file': file_name + '.json', 'save_directory': save_directory, 'error': str(ex),
                                 'mark': mark}))
 
 
 def main(mark):
+    logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
     format_string = '''
         $remote_addr - $remote_user [$time_local] "$request" 
         $status $body_bytes_sent "$http_referer" 
         "$http_user_agent"
         '''
     LOG.info(str(os.path.split(__file__)[1]) + " is running")
+    threads = []
     for file_name in infile_list:
-        threading.Thread(target=parse_nginx_log, args=(file_name, format_string, mark)).start()
-
+        threads.append(threading.Thread(target=parse_nginx_log, args=(file_name,format_string, mark)))
+    for t in threads:
+        t.setDaemon(True)
+        t.start()
+    for t in threads:
+        t.join()
+    with open(base_file_path, 'w') as f:
+        f.write('start\n')
+        for end_flag in end_flag_list:
+            f.write(end_flag + '\n')
+        f.write('end')
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-    main(mark=None)
+    if len(sys.argv)>1:
+        mark = sys.argv[1]
+        main(mark)
+    else:
+        main(mark=None)

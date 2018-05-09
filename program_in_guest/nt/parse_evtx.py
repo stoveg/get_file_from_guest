@@ -5,11 +5,12 @@ import Evtx.Evtx as evtx
 import sys
 import codecs
 import json
-
 import os
 import xmltodict
-
-save_directory = r'E:\tmp\save'
+sys.path.append((os.path.split(__file__)[0]))
+print sys.path
+sys.path.append(os.path.split(os.path.split(os.path.split(__file__)[0])[0])[0])
+from program_in_guest.utils import save_directory
 
 LOG = logging.getLogger(__name__)
 
@@ -31,17 +32,16 @@ def get_options():
 
 
 def parse_evtx(opts):
-    outfile = open(save_directory + os.sep + os.path.split(opts.file)[1] + '.json', 'w')
-    outfile.write(codecs.BOM_UTF8)
-    with evtx.Evtx(opts.file.strip()) as log:
-        for chunk in log.chunks():
-            for record in chunk.records():
-                xml = record.xml()
-                xmlstr = xmltodict.parse(xml, encoding='utf-8')
-                json.dump(xmlstr, outfile, skipkeys=True, ensure_ascii=False, separators=(',', ':'), encoding='utf-8',
-                          sort_keys=True)
-                outfile.write('\n')
-    outfile.close()
+    with open(save_directory + os.sep + os.path.split(opts.file)[1] + '.json', 'w')as outfile:
+        #outfile.write(codecs.BOM_UTF8)
+        with evtx.Evtx(opts.file.strip()) as log:
+            for chunk in log.chunks():
+                for record in chunk.records():
+                    xml = record.xml()
+                    xmlstr = xmltodict.parse(xml, encoding='utf-8')
+                    json.dump(xmlstr, outfile, skipkeys=True, ensure_ascii=False, separators=(',', ':'), encoding='utf-8',
+                              sort_keys=True)
+                    outfile.write('\n')
 
 
 def main():
